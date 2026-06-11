@@ -11,8 +11,9 @@ const DEFAULTS = {
   bizum: "747 474 562",
   address: "Puesto 18, Mercado Guillermo de Osma",
   signalPct: 50,
+  blockedDays: {},  // { "2026-12-25": "closed", "2026-08-14": "half" }
   workers: [
-    { id: "jose", name: "José", active: true, minPerDay: 450, minSat: 240 },
+    { id: "leonel", name: "Leonel", active: true, minPerDay: 450, minSat: 240 },
     { id: "mileydi", name: "Mileydi", active: true, minPerDay: 420, minSat: 240 },
     { id: "ayudante", name: "Ayudante", active: false, minPerDay: 300, minSat: 0 },
   ],
@@ -53,21 +54,34 @@ const gSt = (id) => STATUSES.find((s) => s.id === id) || STATUSES[0];
 // ═══════════════════════════════════════════
 // CAPACITY ENGINE
 // ═══════════════════════════════════════════
+function getDayType(date, config) {
+  const bd = (config.blockedDays || {});
+  if (bd[date] === "closed") return "closed";
+  if (bd[date] === "half") return "half";
+  if (isSunday(date)) return "closed";
+  if (isSaturday(date)) return "saturday";
+  return "normal";
+}
+
 function calcDayCap(date, orders, config) {
-  const sat = isSaturday(date);
-  const total = config.workers.filter(w => w.active).reduce((s, w) => s + (sat ? w.minSat : w.minPerDay), 0);
+  const type = getDayType(date, config);
+  if (type === "closed") return { date, total: 0, used: 0, free: 0, pct: 100, light: "red", type };
+  const sat = type === "saturday";
+  const multiplier = type === "half" ? 0.5 : 1;
+  const total = Math.round(config.workers.filter(w => w.active).reduce((s, w) => s + (sat ? w.minSat : w.minPerDay), 0) * multiplier);
   const used = orders.filter(o => o.deliveryDate === date && !["listo","entregado"].includes(o.status)).reduce((s, o) => s + (o.mins || 30), 0);
   const free = Math.max(0, total - used);
   const pct = total > 0 ? Math.round((used / total) * 100) : 0;
   const light = pct < 70 ? "green" : pct < 90 ? "yellow" : "red";
-  return { date, total, used, free, pct, light };
+  return { date, total, used, free, pct, light, type };
 }
 
 function findSlot(mins, orders, config) {
   const d = new Date();
   for (let i = 0; i < 30; i++) {
     const ds = d.toISOString().split("T")[0];
-    if (isWorkday(ds) && calcDayCap(ds, orders, config).free >= mins) return ds;
+    const type = getDayType(ds, config);
+    if (type !== "closed" && calcDayCap(ds, orders, config).free >= mins) return ds;
     d.setDate(d.getDate() + 1);
   }
   return today();
@@ -78,9 +92,9 @@ function findSlot(mins, orders, config) {
 // ═══════════════════════════════════════════
 const waOpen = (phone, msg) => window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, "_blank");
 const waMsg = {
-  register: (o, c) => `Hola ${o.name}, tu prenda está registrada en el Taller de José.\n\n📋 Ticket: ${ticketCode(o.ticketNum)}\n🧵 ${o.serviceName}\n💰 Precio: ${o.price}€\n💶 Señal (${c.signalPct}%): ${o.signal}€${o.signalPaid?" ✅":""}\n📅 Entrega estimada: ${fmtD(o.deliveryDate)}\n📍 ${c.address}\n\nCuando esté lista te avisamos por aquí. 👋`,
+  register: (o, c) => `Hola ${o.name}, tu prenda está registrada en el Taller de Costura Express.\n\n📋 Ticket: ${ticketCode(o.ticketNum)}\n🧵 ${o.serviceName}\n💰 Precio: ${o.price}€\n💶 Señal (${c.signalPct}%): ${o.signal}€${o.signalPaid?" ✅":""}\n📅 Entrega estimada: ${fmtD(o.deliveryDate)}\n📍 ${c.address}\n\nCuando esté lista te avisamos por aquí. 👋`,
   ready: (o, c) => `Hola ${o.name}, ¡tu prenda está lista! ✅\n\n📋 Ticket: ${ticketCode(o.ticketNum)}\n🧵 ${o.serviceName}\n💶 Resto a pagar: ${Math.max(0, o.price - o.signal)}€\n📍 ${c.address}\n🕐 L-V 10-14h y 17-20:30h, Sáb 10-14h\n\n¡Te esperamos!`,
-  remind: (o, c) => `Hola ${o.name}, tu prenda (${o.serviceName}) lleva esperándote en el Taller de José.\n📋 ${ticketCode(o.ticketNum)}\n📍 ${c.address}\n\n¿Cuándo pasas a recogerla?`,
+  remind: (o, c) => `Hola ${o.name}, tu prenda (${o.serviceName}) lleva esperándote en el Taller de Costura Express.\n📋 ${ticketCode(o.ticketNum)}\n📍 ${c.address}\n\n¿Cuándo pasas a recogerla?`,
 };
 
 // ═══════════════════════════════════════════
@@ -157,7 +171,7 @@ export default function App() {
   const todayCap = useMemo(() => calcDayCap(today(), orders, config), [orders, config]);
   const weekCaps = useMemo(() => {
     const days = []; const d = new Date();
-    for (let i = 0; i < 7; i++) { const ds = d.toISOString().split("T")[0]; if (isWorkday(ds)) days.push(calcDayCap(ds, orders, config)); d.setDate(d.getDate() + 1); }
+    for (let i = 0; i < 7; i++) { const ds = d.toISOString().split("T")[0]; if (!isSunday(ds)) days.push(calcDayCap(ds, orders, config)); d.setDate(d.getDate() + 1); }
     return days;
   }, [orders, config]);
 
@@ -200,7 +214,7 @@ export default function App() {
     <div style={S.entryBg}>
       <div style={S.entryCard}>
         <div style={{fontSize:48,marginBottom:4}}>✂️</div>
-        <h1 style={S.entryTitle}>Taller de José</h1>
+        <h1 style={S.entryTitle}>Taller de Costura Express</h1>
         <p style={S.entrySub}>Gestión de pedidos</p>
         <div style={S.entryBlock}>
           <div style={S.blockLabel}>🔐 Administración</div>
@@ -241,7 +255,7 @@ export default function App() {
       {toast&&<div style={S.toast}>{toast}</div>}
       <div style={S.topBar}>
         <div style={{flex:1}}>
-          <div style={{fontWeight:700,fontSize:"0.95rem"}}>✂️ Taller de José</div>
+          <div style={{fontWeight:700,fontSize:"0.95rem"}}>✂️ Taller de Costura Express</div>
           <div style={{fontSize:"0.65rem",opacity:0.6}}>{inv.total} prendas · {todayCap.free}min libres hoy</div>
         </div>
         <button onClick={()=>{setMode(null);setPin("");setView("dash")}} style={S.logoutBtn}>Salir</button>
@@ -279,12 +293,12 @@ export default function App() {
           </div>
           <div style={S.card}>
             <div style={{fontSize:"0.7rem",fontWeight:600,color:"#6b7280",marginBottom:8,textTransform:"uppercase"}}>📅 Semana</div>
-            {weekCaps.map(d=>(<div key={d.date} style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+            {weekCaps.map(d=>{const closed=d.type==="closed";return(<div key={d.date} style={{display:"flex",alignItems:"center",gap:8,marginBottom:4,...(closed?{opacity:0.4}:{})}}>
               <span style={{width:60,fontSize:"0.7rem",fontWeight:d.date===today()?700:400,color:d.date===today()?"#0f2e47":"#6b7280"}}>{fmtDL(d.date).slice(0,6)}{d.date===today()?" ←":""}</span>
-              <div style={{flex:1}}><CapBar pct={d.pct} color={d.light} h={6}/></div>
-              <span style={{width:28,textAlign:"right",fontSize:"0.65rem",color:"#6b7280"}}>{d.pct}%</span>
-              <span style={{fontSize:"0.68rem"}}>{d.light==="green"?"🟢":d.light==="yellow"?"🟡":"🔴"}</span>
-            </div>))}
+              {closed?<span style={{flex:1,fontSize:"0.65rem",color:"#dc2626"}}>Cerrado</span>:<><div style={{flex:1}}><CapBar pct={d.pct} color={d.light} h={6}/></div>
+              <span style={{width:28,textAlign:"right",fontSize:"0.65rem",color:"#6b7280"}}>{d.pct}%</span></>}
+              <span style={{fontSize:"0.68rem"}}>{closed?"🔴":d.type==="half"?"🟡":d.light==="green"?"🟢":d.light==="yellow"?"🟡":"🔴"}</span>
+            </div>)})}
           </div>
           <div style={{display:"flex",gap:8}}>
             <button onClick={()=>setView("new")} style={{...S.btnP,flex:1,padding:"14px 16px"}}>➕ Nuevo pedido</button>
@@ -306,7 +320,13 @@ export default function App() {
         {view==="new"&&<OrderForm config={config} orders={orders} onSave={addOrder} onCancel={()=>setView("dash")}/>}
 
         {/* CALENDAR */}
-        {view==="calendar"&&<CalendarView orders={orders} config={config}/>}
+        {view==="calendar"&&<CalendarView orders={orders} config={config} onBlockDay={(date,type)=>{
+          const bd={...(config.blockedDays||{})};
+          if(type===null||type==="normal") delete bd[date]; else bd[date]=type;
+          const newCfg={...config,blockedDays:bd};
+          setConfig(newCfg);
+          notify(type==="closed"?"Dia cerrado":type==="half"?"Medio dia":"Dia normal");
+        }}/>}
 
         {/* SETTINGS */}
         {view==="settings"&&<Settings config={config} onSave={c=>{setConfig(c);notify("Guardado")}}/>}
@@ -416,20 +436,32 @@ function OrderForm({order,config,orders,onSave,onCancel,isEdit}){
 // ═══════════════════════════════════════════
 // CALENDAR
 // ═══════════════════════════════════════════
-function CalendarView({orders,config}){
+function CalendarView({orders,config,onBlockDay}){
   const [wo,setWo]=useState(0);
-  const days=useMemo(()=>{const s=new Date();s.setDate(s.getDate()-s.getDay()+1+wo*7);return Array.from({length:7},(_,i)=>{const d=new Date(s);d.setDate(d.getDate()+i);return d.toISOString().split("T")[0]}).filter(isWorkday)},[wo]);
+  const days=useMemo(()=>{const s=new Date();s.setDate(s.getDate()-s.getDay()+1+wo*7);return Array.from({length:7},(_,i)=>{const d=new Date(s);d.setDate(d.getDate()+i);return d.toISOString().split("T")[0]}).filter(d=>!isSunday(d))},[wo]);
   return <div>
     <div style={{display:"flex",justifyContent:"space-between",marginBottom:12}}><button onClick={()=>setWo(w=>w-1)} style={S.btnSm}>←</button><button onClick={()=>setWo(0)} style={{...S.btnSm,fontWeight:600}}>Esta semana</button><button onClick={()=>setWo(w=>w+1)} style={S.btnSm}>→</button></div>
-    {days.map(date=>{const cap=calcDayCap(date,orders,config);const dayO=orders.filter(o=>o.deliveryDate===date&&o.status!=="entregado");const isT=date===today();
-    return <div key={date} style={{...S.card,marginBottom:8,...(isT?{borderColor:"#1d5a8a",boxShadow:"0 0 0 1px #1d5a8a"}:{})}}>
+    <p style={{fontSize:"0.65rem",color:"#9ca3af",marginBottom:10}}>Pulsa el estado de cada dia para cambiarlo: normal / medio dia / cerrado</p>
+    {days.map(date=>{const cap=calcDayCap(date,orders,config);const dayO=orders.filter(o=>o.deliveryDate===date&&o.status!=="entregado");const isT=date===today();const type=cap.type||getDayType(date,config);
+    const isClosed=type==="closed";
+    return <div key={date} style={{...S.card,marginBottom:8,...(isT?{borderColor:"#1d5a8a",boxShadow:"0 0 0 1px #1d5a8a"}:{}), ...(isClosed?{opacity:0.6,background:"#f9fafb"}:{})}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
         <span style={{fontWeight:600,fontSize:"0.85rem"}}>{fmtDL(date)}{isT&&<span style={{marginLeft:6,fontSize:"0.56rem",fontWeight:700,background:"#1d5a8a",color:"#fff",padding:"2px 6px",borderRadius:4}}>HOY</span>}</span>
-        <span style={{fontSize:"0.66rem"}}>{cap.light==="green"?"🟢":cap.light==="yellow"?"🟡":"🔴"} {cap.pct}%</span>
+        <div style={{display:"flex",gap:4,alignItems:"center"}}>
+          {!isClosed&&<span style={{fontSize:"0.66rem"}}>{cap.light==="green"?"🟢":cap.light==="yellow"?"🟡":"🔴"} {cap.pct}%</span>}
+          <button onClick={()=>{
+            const next=type==="closed"?"normal":type==="half"?"closed":"half";
+            onBlockDay(date,next==="normal"?null:next);
+          }} style={{...S.btnSm,fontSize:"0.6rem",padding:"3px 8px",minHeight:28,background:type==="closed"?"#fee2e2":type==="half"?"#fef3c7":"#d1fae5",color:type==="closed"?"#dc2626":type==="half"?"#d97706":"#059669"}}>
+            {type==="closed"?"🔴 Cerrado":type==="half"?"🟡 Medio dia":"🟢 Normal"}
+          </button>
+        </div>
       </div>
-      <CapBar pct={cap.pct} color={cap.light} h={6}/>
+      {!isClosed&&<><CapBar pct={cap.pct} color={cap.light} h={6}/>
       <div style={{fontSize:"0.66rem",color:"#9ca3af",marginTop:4}}>{cap.free}min libres · {dayO.length} pedido{dayO.length!==1?"s":""}</div>
       {dayO.length>0&&<div style={{marginTop:6}}>{dayO.map(o=>{const st=gSt(o.status);return <div key={o.id} style={{display:"flex",alignItems:"center",gap:6,fontSize:"0.73rem",padding:"4px 0",borderTop:"1px solid #f3f4f6"}}><span style={{width:7,height:7,borderRadius:"50%",background:st.color,flexShrink:0}}/><span style={{flex:1}}><strong>{o.name}</strong> — {o.serviceName} ({o.mins}m)</span><span style={{color:st.color,fontSize:"0.6rem",fontWeight:600}}>{st.label}</span></div>})}</div>}
+      </>}
+      {isClosed&&<div style={{fontSize:"0.75rem",color:"#dc2626",marginTop:4}}>No se trabaja este dia</div>}
     </div>})}
   </div>;
 }
@@ -439,20 +471,78 @@ function CalendarView({orders,config}){
 // ═══════════════════════════════════════════
 function Settings({config,onSave}){
   const [workers,setWorkers]=useState(config.workers);
+  const [services,setServices]=useState(config.services);
   const [signalPct,setSignalPct]=useState(config.signalPct);
-  const toggle=(id)=>setWorkers(w=>w.map(x=>x.id===id?{...x,active:!x.active}:x));
-  const setMins=(id,f,v)=>setWorkers(w=>w.map(x=>x.id===id?{...x,[f]:parseInt(v)||0}:x));
-  const setN=(id,n)=>setWorkers(w=>w.map(x=>x.id===id?{...x,name:n}:x));
-  return <div style={S.card}>
-    <h2 style={{fontSize:"1rem",fontWeight:700,color:"#0f2e47",marginBottom:14}}>⚙️ Configuración</h2>
-    <label style={S.label}>Señal (%)</label><input type="number" value={signalPct} onChange={e=>setSignalPct(parseInt(e.target.value)||0)} style={{...S.input,width:100}}/>
-    <label style={{...S.label,marginTop:16}}>Trabajadores</label>
-    {workers.map(w=><div key={w.id} style={{background:w.active?"#f0fdf4":"#f9fafb",borderRadius:12,padding:12,marginBottom:8,border:`1px solid ${w.active?"#86efac":"#e5e7eb"}`}}>
-      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:w.active?8:0}}><input type="checkbox" checked={w.active} onChange={()=>toggle(w.id)} style={{width:18,height:18,accentColor:"#059669"}}/><input value={w.name} onChange={e=>setN(w.id,e.target.value)} style={{...S.input,flex:1,fontWeight:600}}/></div>
-      {w.active&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}><div><div style={{fontSize:"0.63rem",color:"#6b7280"}}>Min/día L-V</div><input type="number" value={w.minPerDay} onChange={e=>setMins(w.id,"minPerDay",e.target.value)} style={S.input}/></div><div><div style={{fontSize:"0.63rem",color:"#6b7280"}}>Min/sábado</div><input type="number" value={w.minSat} onChange={e=>setMins(w.id,"minSat",e.target.value)} style={S.input}/></div></div>}
-    </div>)}
-    <p style={{fontSize:"0.66rem",color:"#9ca3af",marginTop:4}}>Total L-V: {workers.filter(w=>w.active).reduce((s,w)=>s+w.minPerDay,0)}min ({Math.floor(workers.filter(w=>w.active).reduce((s,w)=>s+w.minPerDay,0)/60)}h)</p>
-    <button onClick={()=>onSave({...config,workers,signalPct})} style={{...S.btnP,width:"100%",marginTop:16,padding:"14px 16px"}}>Guardar</button>
+  const [tab,setTab]=useState("services");
+
+  const toggleW=(id)=>setWorkers(w=>w.map(x=>x.id===id?{...x,active:!x.active}:x));
+  const setWField=(id,f,v)=>setWorkers(w=>w.map(x=>x.id===id?{...x,[f]:f==="name"?v:(parseInt(v)||0)}:x));
+
+  const setSvcField=(id,f,v)=>setServices(s=>s.map(x=>x.id===id?{...x,[f]:["price","mins"].includes(f)?(parseFloat(v)||0):v}:x));
+  const addService=()=>{
+    const id="svc_"+Date.now().toString(36);
+    setServices(s=>[...s,{id,name:"Nuevo servicio",icon:"🧵",price:0,mins:30,minDays:1}]);
+  };
+  const removeService=(id)=>setServices(s=>s.filter(x=>x.id!==id));
+
+  return <div>
+    {/* Tabs */}
+    <div style={{display:"flex",gap:6,marginBottom:12}}>
+      {[{id:"services",l:"🧵 Servicios y precios"},{id:"workers",l:"👥 Equipo"},{id:"other",l:"⚙️ Otros"}].map(t2=>(
+        <button key={t2.id} onClick={()=>setTab(t2.id)} style={{...S.fBtn,...(tab===t2.id?S.fBtnA:{})}}>{t2.l}</button>
+      ))}
+    </div>
+
+    {/* SERVICES TAB */}
+    {tab==="services"&&<div style={S.card}>
+      <h2 style={{fontSize:"1rem",fontWeight:700,color:"#0f2e47",marginBottom:4}}>Servicios y precios</h2>
+      <p style={{fontSize:"0.68rem",color:"#9ca3af",marginBottom:14}}>Edita precios, tiempos o crea servicios nuevos</p>
+      {services.map((s,i)=>(
+        <div key={s.id} style={{background:"#f9fafb",borderRadius:12,padding:12,marginBottom:8,border:"1px solid #e5e7eb"}}>
+          <div style={{display:"flex",gap:6,marginBottom:6}}>
+            <input value={s.icon} onChange={e=>setSvcField(s.id,"icon",e.target.value)} style={{...S.input,width:44,textAlign:"center",fontSize:"1.1rem",padding:"6px"}} maxLength={2}/>
+            <input value={s.name} onChange={e=>setSvcField(s.id,"name",e.target.value)} style={{...S.input,flex:1,fontWeight:600}}/>
+            {services.length>1&&<button onClick={()=>removeService(s.id)} style={{...S.btnSm,background:"#fef2f2",color:"#dc2626",minHeight:38}}>🗑</button>}
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6}}>
+            <div>
+              <div style={{fontSize:"0.6rem",color:"#6b7280"}}>Precio (EUR)</div>
+              <input type="number" value={s.price} onChange={e=>setSvcField(s.id,"price",e.target.value)} style={S.input}/>
+            </div>
+            <div>
+              <div style={{fontSize:"0.6rem",color:"#6b7280"}}>Minutos</div>
+              <input type="number" value={s.mins} onChange={e=>setSvcField(s.id,"mins",e.target.value)} style={S.input}/>
+            </div>
+            <div>
+              <div style={{fontSize:"0.6rem",color:"#6b7280"}}>Dias min.</div>
+              <input type="number" value={s.minDays||0} onChange={e=>setSvcField(s.id,"minDays",e.target.value)} style={S.input}/>
+            </div>
+          </div>
+        </div>
+      ))}
+      <button onClick={addService} style={{...S.btnSec,width:"100%",marginTop:8,padding:"12px 16px"}}>+ Nuevo servicio</button>
+    </div>}
+
+    {/* WORKERS TAB */}
+    {tab==="workers"&&<div style={S.card}>
+      <h2 style={{fontSize:"1rem",fontWeight:700,color:"#0f2e47",marginBottom:4}}>Equipo de trabajo</h2>
+      <p style={{fontSize:"0.68rem",color:"#9ca3af",marginBottom:14}}>Activa o desactiva personas y ajusta sus horas</p>
+      {workers.map(w=><div key={w.id} style={{background:w.active?"#f0fdf4":"#f9fafb",borderRadius:12,padding:12,marginBottom:8,border:"1px solid "+(w.active?"#86efac":"#e5e7eb")}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:w.active?8:0}}><input type="checkbox" checked={w.active} onChange={()=>toggleW(w.id)} style={{width:18,height:18,accentColor:"#059669"}}/><input value={w.name} onChange={e=>setWField(w.id,"name",e.target.value)} style={{...S.input,flex:1,fontWeight:600}}/></div>
+        {w.active&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}><div><div style={{fontSize:"0.63rem",color:"#6b7280"}}>Min/dia L-V</div><input type="number" value={w.minPerDay} onChange={e=>setWField(w.id,"minPerDay",e.target.value)} style={S.input}/></div><div><div style={{fontSize:"0.63rem",color:"#6b7280"}}>Min/sabado</div><input type="number" value={w.minSat} onChange={e=>setWField(w.id,"minSat",e.target.value)} style={S.input}/></div></div>}
+      </div>)}
+      <p style={{fontSize:"0.66rem",color:"#9ca3af",marginTop:4}}>Total L-V: {workers.filter(w=>w.active).reduce((s,w)=>s+w.minPerDay,0)}min ({Math.floor(workers.filter(w=>w.active).reduce((s,w)=>s+w.minPerDay,0)/60)}h)</p>
+    </div>}
+
+    {/* OTHER TAB */}
+    {tab==="other"&&<div style={S.card}>
+      <h2 style={{fontSize:"1rem",fontWeight:700,color:"#0f2e47",marginBottom:14}}>Otros ajustes</h2>
+      <label style={S.label}>Senal por adelantado (%)</label>
+      <input type="number" value={signalPct} onChange={e=>setSignalPct(parseInt(e.target.value)||0)} style={{...S.input,width:100}}/>
+    </div>}
+
+    {/* SAVE */}
+    <button onClick={()=>onSave({...config,workers,services,signalPct})} style={{...S.btnP,width:"100%",marginTop:12,padding:"14px 16px"}}>Guardar todo</button>
   </div>;
 }
 
