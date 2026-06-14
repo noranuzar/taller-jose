@@ -333,48 +333,7 @@ export default function App() {
       <div style={S.content}>
 
         {/* DASHBOARD */}
-        {view==="dash"&&<>
-          <div style={S.card}>
-            <div style={S.cardLabel}>Prendas en el taller</div>
-            <div style={{display:"flex",gap:8,justifyContent:"space-between"}}>
-              {[{n:inv.registrado,l:"Pendiente",c:"#9333ea",bg:"#f3e8ff"},{n:inv.confirmado,l:"En cola",c:"#2563eb",bg:"#dbeafe"},{n:inv.proceso,l:"Cosiendo",c:"#d97706",bg:"#fef3c7"},{n:inv.listo,l:"Listas",c:"#059669",bg:"#d1fae5"}].map(s=>(
-                <div key={s.l} style={{flex:1,textAlign:"center",background:s.bg,borderRadius:12,padding:"10px 4px"}}>
-                  <div style={{fontSize:"1.4rem",fontWeight:700,color:s.c}}>{s.n}</div>
-                  <div style={{fontSize:"0.6rem",color:s.c,fontWeight:500}}>{s.l}</div>
-                </div>
-              ))}
-            </div>
-            <div style={{textAlign:"center",marginTop:8,fontSize:"0.8rem",fontWeight:600,color:"#0f2e47"}}>{inv.total} prendas</div>
-          </div>
-          {(alerts.length>0||inv.listo>0)&&<div style={{...S.card,background:"#fefce8",borderColor:"#fde68a"}}>
-            <div style={{...S.cardLabel,color:"#92400e"}}>Atencion</div>
-            {inv.listo>0&&<div style={{fontSize:"0.8rem",color:"#92400e",marginBottom:4}}>{inv.listo} prenda{inv.listo>1?"s":""} lista{inv.listo>1?"s":""} para recoger</div>}
-            {alerts.map((a,i)=>(<div key={i} style={{fontSize:"0.76rem",color:"#92400e",marginBottom:4,display:"flex",justifyContent:"space-between",alignItems:"center"}}><span>{a.msg}</span>{a.type==="old"&&<button onClick={()=>waOpen(a.o.phone,waRemind(a.o,config))} style={{...S.btnSm,background:"#fde68a",color:"#92400e",fontSize:"0.62rem"}}>Recordar</button>}</div>))}
-          </div>}
-          <div style={S.card}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-              <div style={S.cardLabel}>Capacidad hoy</div>
-              <div style={{fontSize:"0.72rem",fontWeight:700,color:todayCap.light==="green"?"#059669":todayCap.light==="yellow"?"#d97706":"#dc2626"}}>{todayCap.light==="green"?"🟢 Aceptar":todayCap.light==="yellow"?"🟡 Casi lleno":"🔴 Lleno"}</div>
-            </div>
-            <CapBar pct={todayCap.pct} color={todayCap.light}/>
-            <div style={{display:"flex",justifyContent:"space-between",fontSize:"0.73rem",color:"#6b7280",marginTop:6}}>
-              <span>{todayCap.used}min usados</span>
-              <span><strong style={{color:"#0f2e47"}}>{todayCap.free}min libres</strong></span>
-            </div>
-          </div>
-          <div style={S.card}>
-            <div style={S.cardLabel}>Esta semana</div>
-            {weekCaps.map(d=>{const closed=d.type==="closed";return <div key={d.date} style={{display:"flex",alignItems:"center",gap:8,marginBottom:4,...(closed?{opacity:0.4}:{})}}>
-              <span style={{width:60,fontSize:"0.7rem",fontWeight:d.date===today()?700:400,color:d.date===today()?"#0f2e47":"#6b7280"}}>{fmtDL(d.date).slice(0,6)}{d.date===today()?" <-":""}</span>
-              {closed?<span style={{flex:1,fontSize:"0.65rem",color:"#dc2626"}}>Cerrado</span>:<><div style={{flex:1}}><CapBar pct={d.pct} color={d.light} h={6}/></div><span style={{width:28,textAlign:"right",fontSize:"0.65rem",color:"#6b7280"}}>{d.pct}%</span></>}
-              <span style={{fontSize:"0.68rem"}}>{closed?"🔴":d.light==="green"?"🟢":d.light==="yellow"?"🟡":"🔴"}</span>
-            </div>})}
-          </div>
-          <div style={{display:"flex",gap:8}}>
-            <button onClick={()=>setView("new")} style={{...S.btnP,flex:1,padding:"14px 16px"}}>Nuevo pedido</button>
-            <button onClick={()=>setView("orders")} style={{...S.btnSec,flex:1,padding:"14px 16px"}}>Ver pedidos</button>
-          </div>
-        </>}
+        {view==="dash"&&<DayView orders={orders} config={config} todayCap={todayCap} weekCaps={weekCaps} alerts={alerts} inv={inv} onAdvance={advanceStatus} onRemind={o=>waOpen(o.phone,waRemind(o,config))} onNew={()=>setView("new")} onOrders={()=>setView("orders")}/>}
 
         {/* ORDERS */}
         {view==="orders"&&!editing&&<>
@@ -404,6 +363,129 @@ export default function App() {
       </div>
     </div>
   );
+}
+
+// ═══════════════════════════════════════════
+// DAY VIEW (progress + priority tasks)
+// ═══════════════════════════════════════════
+function DayView({orders, config, todayCap, weekCaps, alerts, inv, onAdvance, onRemind, onNew, onOrders}) {
+  const t = today();
+  const tomorrow = (() => { const d = new Date(); d.setDate(d.getDate() + 1); return d.toISOString().split("T")[0]; })();
+
+  // Classify today's work
+  const overdue = orders.filter(o => o.deliveryDate < t && !["listo","entregado"].includes(o.status));
+  const todayActive = orders.filter(o => o.deliveryDate === t && !["listo","entregado"].includes(o.status));
+  const todayDone = orders.filter(o => o.deliveryDate <= t && o.status === "listo");
+  const todayDelivered = orders.filter(o => o.deliveryDate <= t && o.status === "entregado" && new Date(o.createdAt).toISOString().split("T")[0] >= (() => { const d = new Date(); d.setDate(d.getDate() - 1); return d.toISOString().split("T")[0]; })());
+  const tomorrowActive = orders.filter(o => o.deliveryDate === tomorrow && !["listo","entregado"].includes(o.status));
+
+  // Progress calculation
+  const totalToday = overdue.length + todayActive.length + todayDone.length;
+  const doneCount = todayDone.length;
+  const progressPct = totalToday > 0 ? Math.round((doneCount / totalToday) * 100) : 100;
+  const remaining = overdue.length + todayActive.length;
+  const remainingMins = [...overdue, ...todayActive].reduce((s, o) => s + (o.mins || 30), 0);
+
+  const TaskItem = ({o}) => {
+    const st = gSt(o.status);
+    const idx = STATUSES.findIndex(s => s.id === o.status);
+    const next = STATUSES[idx + 1];
+    return (
+      <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 0",borderBottom:"1px solid #f3f4f6"}}>
+        <div style={{width:4,height:36,borderRadius:2,background:st.color,flexShrink:0}}/>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontSize:"0.82rem",fontWeight:600,color:"#0f2e47"}}>{o.serviceIcon} {o.serviceName} <span style={{fontWeight:400,color:"#9ca3af",fontSize:"0.68rem"}}>{tkt(o.ticketNum)}</span></div>
+          <div style={{fontSize:"0.68rem",color:"#6b7280"}}>{o.name} — {o.mins}min {o.assignedTo ? "— "+o.assignedTo : ""}</div>
+        </div>
+        {next && next.id !== "entregado" && <button onClick={()=>onAdvance(o.id)} style={{...S.btnSm,background:next.bg,color:next.color,fontWeight:600,padding:"6px 10px",minHeight:36,fontSize:"0.68rem",whiteSpace:"nowrap"}}>{next.icon} {next.id==="listo"?"Listo":"Empezar"}</button>}
+        {o.status === "listo" && <button onClick={()=>onRemind(o)} style={{...S.btnSm,background:"#fef3c7",color:"#92400e",minHeight:36,fontSize:"0.68rem"}}>📲</button>}
+      </div>
+    );
+  };
+
+  return <>
+    {/* Progress */}
+    <div style={{...S.card,background:"linear-gradient(135deg,#0f2e47,#1d5a8a)",color:"#fff",border:"none"}}>
+      <div style={{textAlign:"center",fontSize:"0.72rem",opacity:0.7,marginBottom:8}}>HOY — {fmtDL(t).toUpperCase()}</div>
+      {/* Progress bar */}
+      <div style={{width:"100%",height:14,borderRadius:7,background:"rgba(255,255,255,0.15)",overflow:"hidden",marginBottom:8}}>
+        <div style={{width:progressPct+"%",height:"100%",borderRadius:7,background:remaining===0?"#34d399":"#fff",transition:"width 0.6s ease"}}/>
+      </div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <span style={{fontSize:"1.5rem",fontWeight:700}}>{doneCount} <span style={{fontSize:"0.8rem",fontWeight:400,opacity:0.7}}>de {totalToday} hechas</span></span>
+        <span style={{fontSize:"0.78rem",opacity:0.8}}>{remaining > 0 ? remaining + " pendiente" + (remaining>1?"s":"") + " — " + remainingMins + "min" : "Todo entregado"}</span>
+      </div>
+    </div>
+
+    {/* Inventory mini */}
+    <div style={{display:"flex",gap:6,marginBottom:12}}>
+      {[{n:inv.registrado,l:"Pend",c:"#9333ea",bg:"#f3e8ff"},{n:inv.confirmado,l:"Cola",c:"#2563eb",bg:"#dbeafe"},{n:inv.proceso,l:"Cosiendo",c:"#d97706",bg:"#fef3c7"},{n:inv.listo,l:"Listas",c:"#059669",bg:"#d1fae5"}].map(s=>(
+        <div key={s.l} style={{flex:1,textAlign:"center",background:s.bg,borderRadius:10,padding:"6px 2px"}}>
+          <div style={{fontSize:"1.1rem",fontWeight:700,color:s.c}}>{s.n}</div>
+          <div style={{fontSize:"0.55rem",color:s.c,fontWeight:500}}>{s.l}</div>
+        </div>
+      ))}
+    </div>
+
+    {/* Alerts */}
+    {alerts.length>0&&<div style={{...S.card,background:"#fefce8",borderColor:"#fde68a",padding:12}}>
+      {alerts.map((a,i)=>(<div key={i} style={{fontSize:"0.73rem",color:"#92400e",marginBottom:3,display:"flex",justifyContent:"space-between",alignItems:"center"}}><span>{a.type==="old"?"🔔":"💶"} {a.msg}</span>{a.type==="old"&&<button onClick={()=>onRemind(a.o)} style={{...S.btnSm,background:"#fde68a",color:"#92400e",fontSize:"0.6rem"}}>📲</button>}</div>))}
+    </div>}
+
+    {/* Overdue */}
+    {overdue.length>0&&<div style={{...S.card,borderLeft:"4px solid #dc2626"}}>
+      <div style={{fontSize:"0.72rem",fontWeight:700,color:"#dc2626",marginBottom:6}}>🔴 ATRASADAS ({overdue.length})</div>
+      {overdue.map(o=><TaskItem key={o.id} o={o}/>)}
+    </div>}
+
+    {/* Today */}
+    {todayActive.length>0&&<div style={{...S.card,borderLeft:"4px solid #d97706"}}>
+      <div style={{fontSize:"0.72rem",fontWeight:700,color:"#d97706",marginBottom:6}}>🟠 PARA HOY ({todayActive.length})</div>
+      {todayActive.map(o=><TaskItem key={o.id} o={o}/>)}
+    </div>}
+
+    {/* Tomorrow */}
+    {tomorrowActive.length>0&&<div style={{...S.card,borderLeft:"4px solid #2563eb",opacity:0.8}}>
+      <div style={{fontSize:"0.72rem",fontWeight:700,color:"#2563eb",marginBottom:6}}>🔵 MANANA ({tomorrowActive.length}) — adelantar si da tiempo</div>
+      {tomorrowActive.map(o=><TaskItem key={o.id} o={o}/>)}
+    </div>}
+
+    {/* Done today */}
+    {todayDone.length>0&&<div style={{...S.card,background:"#f0fdf4",borderColor:"#86efac"}}>
+      <div style={{fontSize:"0.72rem",fontWeight:700,color:"#059669",marginBottom:6}}>✅ TERMINADAS ({todayDone.length})</div>
+      {todayDone.map(o=>(<div key={o.id} style={{fontSize:"0.75rem",color:"#059669",padding:"3px 0"}}>{tkt(o.ticketNum)} {o.name} — {o.serviceName}</div>))}
+    </div>}
+
+    {/* Empty state */}
+    {totalToday===0&&overdue.length===0&&<div style={{...S.card,textAlign:"center",padding:24}}>
+      <div style={{fontSize:"0.88rem",color:"#0f2e47",fontWeight:600}}>Sin entregas para hoy</div>
+      <div style={{fontSize:"0.75rem",color:"#6b7280",marginTop:4}}>{inv.total > 0 ? inv.total + " prendas en el taller para otros dias" : "No hay pedidos activos"}</div>
+    </div>}
+
+    {/* Capacity */}
+    <div style={{...S.card,padding:12}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+        <span style={{fontSize:"0.68rem",fontWeight:600,color:"#6b7280"}}>CAPACIDAD</span>
+        <span style={{fontSize:"0.68rem",fontWeight:700,color:todayCap.light==="green"?"#059669":todayCap.light==="yellow"?"#d97706":"#dc2626"}}>{todayCap.light==="green"?"🟢 Hay hueco":todayCap.light==="yellow"?"🟡 Casi lleno":"🔴 Lleno"}</span>
+      </div>
+      <CapBar pct={todayCap.pct} color={todayCap.light} h={6}/>
+      <div style={{fontSize:"0.65rem",color:"#9ca3af",marginTop:4}}>{todayCap.free}min libres hoy</div>
+      <div style={{display:"flex",gap:4,marginTop:8}}>
+        {weekCaps.slice(0,5).map(d=>{const cl=d.type==="closed";return <div key={d.date} style={{flex:1,textAlign:"center"}}>
+          <div style={{fontSize:"0.55rem",color:d.date===t?"#0f2e47":"#9ca3af",fontWeight:d.date===t?700:400}}>{fmtDL(d.date).slice(0,3)}</div>
+          <div style={{height:4,borderRadius:2,marginTop:2,background:cl?"#fee2e2":d.light==="green"?"#d1fae5":d.light==="yellow"?"#fef3c7":"#fee2e2"}}>
+            {!cl&&<div style={{width:Math.min(100,d.pct)+"%",height:"100%",borderRadius:2,background:d.light==="green"?"#059669":d.light==="yellow"?"#d97706":"#dc2626"}}/>}
+          </div>
+        </div>})}
+      </div>
+    </div>
+
+    {/* Actions */}
+    <div style={{display:"flex",gap:8}}>
+      <button onClick={onNew} style={{...S.btnP,flex:1,padding:"14px 16px"}}>Nuevo pedido</button>
+      <button onClick={onOrders} style={{...S.btnSec,flex:1,padding:"14px 16px"}}>Todos los pedidos</button>
+    </div>
+  </>;
 }
 
 // ═══════════════════════════════════════════
