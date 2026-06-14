@@ -11,7 +11,15 @@ const DEFAULTS = {
   bizum: "747 474 562",
   address: "Puesto 18, Mercado Guillermo de Osma",
   signalPct: 50,
-  blockedDays: {},
+  blockedDays: {
+    "2026-01-01":"closed","2026-01-06":"closed",
+    "2026-04-02":"closed","2026-04-03":"closed",
+    "2026-05-01":"closed","2026-05-02":"closed",
+    "2026-05-15":"closed","2026-08-15":"closed",
+    "2026-10-12":"closed","2026-11-02":"closed",
+    "2026-11-09":"closed","2026-12-07":"closed",
+    "2026-12-08":"closed","2026-12-25":"closed"
+  },
   workers: [
     { id: "leonel", name: "Leonel", active: true, minPerDay: 450, minSat: 240 },
     { id: "mileydi", name: "Mileydi", active: true, minPerDay: 420, minSat: 240 },
@@ -49,6 +57,37 @@ const STATUSES = [
   { id: "entregado", label: "Entregado", color: "#6b7280", bg: "#f3f4f6", icon: "🤝" },
 ];
 const gSt = (id) => STATUSES.find(s => s.id === id) || STATUSES[0];
+
+// ═══════════════════════════════════════════
+// VERSICULO Y SALUDO
+// ═══════════════════════════════════════════
+const VERSES = [
+  { text: "El trabajo de tus manos comeras; bienaventurado seras", ref: "Salmos 128:2" },
+  { text: "Encomienda al Senor tus obras y tus planes se estableceran", ref: "Proverbios 16:3" },
+  { text: "Todo lo puedo en Cristo que me fortalece", ref: "Filipenses 4:13" },
+  { text: "Haz todo como para el Senor", ref: "Colosenses 3:23" },
+  { text: "No te dejare ni te desamparare", ref: "Hebreos 13:5" },
+  { text: "Porque yo se los planes que tengo para ustedes, planes de bienestar", ref: "Jeremias 29:11" },
+  { text: "Esfuerzate y se valiente, no temas", ref: "Josue 1:9" },
+  { text: "El Senor es mi pastor, nada me faltara", ref: "Salmos 23:1" },
+  { text: "Mira que te mando que te esfuerces y seas valiente", ref: "Josue 1:9" },
+  { text: "Pon en manos del Senor todas tus obras y tus proyectos se cumpliran", ref: "Proverbios 16:3" },
+  { text: "Sean satisfechas las obras de tus manos", ref: "Deuteronomio 33:11" },
+  { text: "Dios es nuestro refugio y fortaleza, nuestro pronto auxilio", ref: "Salmos 46:1" },
+  { text: "Con Dios haremos proezas", ref: "Salmos 60:12" },
+  { text: "El que comenzo en ustedes la buena obra la perfeccionara", ref: "Filipenses 1:6" },
+];
+const getVerse = () => { const d = Math.floor(Date.now() / 86400000); return VERSES[d % VERSES.length]; };
+const getGreeting = () => { const h = new Date().getHours(); return h < 14 ? "Buenos dias" : "Buenas tardes"; };
+const getNextWorkday = (config) => {
+  const d = new Date(); d.setDate(d.getDate() + 1);
+  for (let i = 0; i < 14; i++) {
+    const ds = d.toISOString().split("T")[0];
+    if (getDayType(ds, config) !== "closed") return ds;
+    d.setDate(d.getDate() + 1);
+  }
+  return null;
+};
 
 // ═══════════════════════════════════════════
 // CAPACITY ENGINE
@@ -325,7 +364,7 @@ export default function App() {
         <button onClick={()=>{setMode(null);setPin("");setView("dash")}} style={S.logoutBtn}>Salir</button>
       </div>
       <div style={S.tabs}>
-        {[{id:"dash",l:"🏠"},{id:"orders",l:"📋"},{id:"new",l:"➕"},{id:"calendar",l:"📅"},{id:"settings",l:"⚙️"}].map(t=>(
+        {[{id:"dash",l:"🏠"},{id:"orders",l:"📋"},{id:"new",l:"➕"},{id:"stock",l:"📦"},{id:"calendar",l:"📅"},{id:"settings",l:"⚙️"}].map(t=>(
           <button key={t.id} onClick={()=>{setView(t.id);setEditing(null);setSearch("")}} style={{...S.tab,...(view===t.id?S.tabA:{})}}>{t.l}</button>
         ))}
         <button onClick={exportCSV} style={S.tab}>📤</button>
@@ -350,6 +389,21 @@ export default function App() {
         {/* NEW */}
         {view==="new"&&<NewBatchForm config={config} orders={orders} onSave={addBatch} onCancel={()=>setView("dash")}/>}
 
+        {/* STOCK LOAD */}
+        {view==="stock"&&<QuickLoadForm config={config} orders={orders} ticketCounter={ticketCounter} onAdd={(o,sendWA)=>{
+          const tn = ticketCounter + 1;
+          setTicketCounter(tn);
+          const svc = config.services.find(s=>s.id===o.serviceId)||config.services[6];
+          const nw = {...o,id:uid(),ticketNum:tn,batchId:uid(),serviceName:svc.name,serviceIcon:svc.icon,batchSignal:o.paid||0,batchTotal:o.price,signalPaid:o.paid>0,source:"stock",createdAt:new Date().toISOString()};
+          setOrders(p=>[nw,...p]);
+          notify(tkt(tn)+" cargado");
+          if(sendWA&&o.status==="listo"){
+            const pending=o.price-(o.paid||0);
+            const msg="Hola "+o.name+", te escribimos del Taller de Costura Express.\nTu prenda ("+svc.name+") esta lista para recoger."+(pending>0?"\nPendiente: "+pending+"E":"")+"\n"+config.address+"\nL-V 10-14h y 17-20:30h, Sab 10-14h";
+            waOpen(o.phone,msg);
+          }
+        }}/>}
+
         {/* CALENDAR */}
         {view==="calendar"&&<CalendarView orders={orders} config={config} onBlockDay={(date,type)=>{
           const bd={...(config.blockedDays||{})};
@@ -370,21 +424,25 @@ export default function App() {
 // ═══════════════════════════════════════════
 function DayView({orders, config, todayCap, weekCaps, alerts, inv, onAdvance, onRemind, onNew, onOrders}) {
   const t = today();
-  const tomorrow = (() => { const d = new Date(); d.setDate(d.getDate() + 1); return d.toISOString().split("T")[0]; })();
+  const isClosed = getDayType(t, config) === "closed";
+  const displayDate = isClosed ? getNextWorkday(config) : t;
+  const tomorrow = (() => { const d = new Date(displayDate + "T12:00:00"); d.setDate(d.getDate() + 1); while(getDayType(d.toISOString().split("T")[0], config) === "closed") d.setDate(d.getDate() + 1); return d.toISOString().split("T")[0]; })();
 
-  // Classify today's work
-  const overdue = orders.filter(o => o.deliveryDate < t && !["listo","entregado"].includes(o.status));
-  const todayActive = orders.filter(o => o.deliveryDate === t && !["listo","entregado"].includes(o.status));
-  const todayDone = orders.filter(o => o.deliveryDate <= t && o.status === "listo");
-  const todayDelivered = orders.filter(o => o.deliveryDate <= t && o.status === "entregado" && new Date(o.createdAt).toISOString().split("T")[0] >= (() => { const d = new Date(); d.setDate(d.getDate() - 1); return d.toISOString().split("T")[0]; })());
+  // Classify work for display date
+  const overdue = orders.filter(o => o.deliveryDate < displayDate && !["listo","entregado"].includes(o.status));
+  const dayActive = orders.filter(o => o.deliveryDate === displayDate && !["listo","entregado"].includes(o.status));
+  const dayDone = orders.filter(o => o.deliveryDate <= displayDate && o.status === "listo");
   const tomorrowActive = orders.filter(o => o.deliveryDate === tomorrow && !["listo","entregado"].includes(o.status));
 
-  // Progress calculation
-  const totalToday = overdue.length + todayActive.length + todayDone.length;
-  const doneCount = todayDone.length;
-  const progressPct = totalToday > 0 ? Math.round((doneCount / totalToday) * 100) : 100;
-  const remaining = overdue.length + todayActive.length;
-  const remainingMins = [...overdue, ...todayActive].reduce((s, o) => s + (o.mins || 30), 0);
+  // Progress
+  const totalDay = overdue.length + dayActive.length + dayDone.length;
+  const doneCount = dayDone.length;
+  const progressPct = totalDay > 0 ? Math.round((doneCount / totalDay) * 100) : 100;
+  const remaining = overdue.length + dayActive.length;
+  const remainingMins = [...overdue, ...dayActive].reduce((s, o) => s + (o.mins || 30), 0);
+
+  const verse = getVerse();
+  const displayCap = isClosed ? calcDayCap(displayDate, orders, config) : todayCap;
 
   const TaskItem = ({o}) => {
     const st = gSt(o.status);
@@ -404,6 +462,17 @@ function DayView({orders, config, todayCap, weekCaps, alerts, inv, onAdvance, on
   };
 
   return <>
+    {/* Verse + greeting */}
+    <div style={{...S.card,background:"#fefce8",borderColor:"#fde68a",textAlign:"center",padding:"16px 20px"}}>
+      <div style={{fontSize:"0.82rem",fontStyle:"italic",color:"#92400e",lineHeight:1.5}}>{'"'+verse.text+'"'}</div>
+      <div style={{fontSize:"0.68rem",color:"#b45309",marginTop:4}}>{verse.ref}</div>
+      <div style={{fontSize:"0.88rem",fontWeight:600,color:"#0f2e47",marginTop:10}}>{getGreeting()}</div>
+    </div>
+
+    {/* Closed day notice */}
+    {isClosed && <div style={{...S.card,background:"#f9fafb",textAlign:"center",padding:12}}>
+      <div style={{fontSize:"0.8rem",color:"#6b7280"}}>Hoy es festivo — mostrando plan para <strong style={{color:"#0f2e47"}}>{fmtDL(displayDate)}</strong></div>
+    </div>}
     {/* Progress */}
     <div style={{...S.card,background:"linear-gradient(135deg,#0f2e47,#1d5a8a)",color:"#fff",border:"none"}}>
       <div style={{textAlign:"center",fontSize:"0.72rem",opacity:0.7,marginBottom:8}}>HOY — {fmtDL(t).toUpperCase()}</div>
@@ -412,7 +481,7 @@ function DayView({orders, config, todayCap, weekCaps, alerts, inv, onAdvance, on
         <div style={{width:progressPct+"%",height:"100%",borderRadius:7,background:remaining===0?"#34d399":"#fff",transition:"width 0.6s ease"}}/>
       </div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-        <span style={{fontSize:"1.5rem",fontWeight:700}}>{doneCount} <span style={{fontSize:"0.8rem",fontWeight:400,opacity:0.7}}>de {totalToday} hechas</span></span>
+        <span style={{fontSize:"1.5rem",fontWeight:700}}>{doneCount} <span style={{fontSize:"0.8rem",fontWeight:400,opacity:0.7}}>de {totalDay} hechas</span></span>
         <span style={{fontSize:"0.78rem",opacity:0.8}}>{remaining > 0 ? remaining + " pendiente" + (remaining>1?"s":"") + " — " + remainingMins + "min" : "Todo entregado"}</span>
       </div>
     </div>
@@ -439,9 +508,9 @@ function DayView({orders, config, todayCap, weekCaps, alerts, inv, onAdvance, on
     </div>}
 
     {/* Today */}
-    {todayActive.length>0&&<div style={{...S.card,borderLeft:"4px solid #d97706"}}>
-      <div style={{fontSize:"0.72rem",fontWeight:700,color:"#d97706",marginBottom:6}}>🟠 PARA HOY ({todayActive.length})</div>
-      {todayActive.map(o=><TaskItem key={o.id} o={o}/>)}
+    {dayActive.length>0&&<div style={{...S.card,borderLeft:"4px solid #d97706"}}>
+      <div style={{fontSize:"0.72rem",fontWeight:700,color:"#d97706",marginBottom:6}}>🟠 {isClosed?"PARA "+fmtDL(displayDate).toUpperCase():"PARA HOY"} ({dayActive.length})</div>
+      {dayActive.map(o=><TaskItem key={o.id} o={o}/>)}
     </div>}
 
     {/* Tomorrow */}
@@ -451,14 +520,14 @@ function DayView({orders, config, todayCap, weekCaps, alerts, inv, onAdvance, on
     </div>}
 
     {/* Done today */}
-    {todayDone.length>0&&<div style={{...S.card,background:"#f0fdf4",borderColor:"#86efac"}}>
-      <div style={{fontSize:"0.72rem",fontWeight:700,color:"#059669",marginBottom:6}}>✅ TERMINADAS ({todayDone.length})</div>
-      {todayDone.map(o=>(<div key={o.id} style={{fontSize:"0.75rem",color:"#059669",padding:"3px 0"}}>{tkt(o.ticketNum)} {o.name} — {o.serviceName}</div>))}
+    {dayDone.length>0&&<div style={{...S.card,background:"#f0fdf4",borderColor:"#86efac"}}>
+      <div style={{fontSize:"0.72rem",fontWeight:700,color:"#059669",marginBottom:6}}>TERMINADAS ({dayDone.length})</div>
+      {dayDone.map(o=>(<div key={o.id} style={{fontSize:"0.75rem",color:"#059669",padding:"3px 0"}}>{tkt(o.ticketNum)} {o.name} — {o.serviceName}</div>))}
     </div>}
 
     {/* Empty state */}
-    {totalToday===0&&overdue.length===0&&<div style={{...S.card,textAlign:"center",padding:24}}>
-      <div style={{fontSize:"0.88rem",color:"#0f2e47",fontWeight:600}}>Sin entregas para hoy</div>
+    {totalDay===0&&overdue.length===0&&<div style={{...S.card,textAlign:"center",padding:24}}>
+      <div style={{fontSize:"0.88rem",color:"#0f2e47",fontWeight:600}}>Sin entregas para {isClosed?fmtDL(displayDate):"hoy"}</div>
       <div style={{fontSize:"0.75rem",color:"#6b7280",marginTop:4}}>{inv.total > 0 ? inv.total + " prendas en el taller para otros dias" : "No hay pedidos activos"}</div>
     </div>}
 
@@ -466,10 +535,10 @@ function DayView({orders, config, todayCap, weekCaps, alerts, inv, onAdvance, on
     <div style={{...S.card,padding:12}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
         <span style={{fontSize:"0.68rem",fontWeight:600,color:"#6b7280"}}>CAPACIDAD</span>
-        <span style={{fontSize:"0.68rem",fontWeight:700,color:todayCap.light==="green"?"#059669":todayCap.light==="yellow"?"#d97706":"#dc2626"}}>{todayCap.light==="green"?"🟢 Hay hueco":todayCap.light==="yellow"?"🟡 Casi lleno":"🔴 Lleno"}</span>
+        <span style={{fontSize:"0.68rem",fontWeight:700,color:displayCap.light==="green"?"#059669":displayCap.light==="yellow"?"#d97706":"#dc2626"}}>{displayCap.light==="green"?"🟢 Hay hueco":displayCap.light==="yellow"?"🟡 Casi lleno":"🔴 Lleno"}</span>
       </div>
-      <CapBar pct={todayCap.pct} color={todayCap.light} h={6}/>
-      <div style={{fontSize:"0.65rem",color:"#9ca3af",marginTop:4}}>{todayCap.free}min libres hoy</div>
+      <CapBar pct={displayCap.pct} color={displayCap.light} h={6}/>
+      <div style={{fontSize:"0.65rem",color:"#9ca3af",marginTop:4}}>{displayCap.free}min libres</div>
       <div style={{display:"flex",gap:4,marginTop:8}}>
         {weekCaps.slice(0,5).map(d=>{const cl=d.type==="closed";return <div key={d.date} style={{flex:1,textAlign:"center"}}>
           <div style={{fontSize:"0.55rem",color:d.date===t?"#0f2e47":"#9ca3af",fontWeight:d.date===t?700:400}}>{fmtDL(d.date).slice(0,3)}</div>
@@ -731,6 +800,77 @@ function CapBar({pct,color,h=10}){
   const c=color==="green"?"#059669":color==="yellow"?"#d97706":"#dc2626";
   const bg=color==="green"?"#d1fae5":color==="yellow"?"#fef3c7":"#fee2e2";
   return <div style={{width:"100%",height:h,borderRadius:h/2,background:bg,overflow:"hidden"}}><div style={{width:Math.min(100,pct)+"%",height:"100%",borderRadius:h/2,background:c,transition:"width 0.4s"}}/></div>;
+}
+
+// ═══════════════════════════════════════════
+// QUICK LOAD (existing stock)
+// ═══════════════════════════════════════════
+function QuickLoadForm({config, orders, ticketCounter, onAdd}) {
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [svcId, setSvcId] = useState("bajos");
+  const [price, setPrice] = useState("");
+  const [paid, setPaid] = useState("");
+  const [status, setStatus] = useState("confirmado");
+  const [count, setCount] = useState(0);
+
+  const svc = config.services.find(s => s.id === svcId) || config.services[0];
+  const priceNum = parseFloat(price) || svc.price;
+  const paidNum = parseFloat(paid) || 0;
+
+  const reset = (keepClient) => {
+    if (!keepClient) { setName(""); setPhone(""); }
+    setSvcId("bajos"); setPrice(""); setPaid(""); setStatus("confirmado");
+  };
+
+  const save = (sendWA) => {
+    if (!name.trim() || !phone.trim()) return;
+    onAdd({
+      name: name.trim(), phone: cleanPh(phone), serviceId: svcId,
+      price: priceNum, paid: paidNum, mins: svc.mins,
+      deliveryDate: today(), status, assignedTo: null, notes: "",
+    }, sendWA);
+    setCount(c => c + 1);
+    reset(true);
+  };
+
+  return <div style={S.card}>
+    <h2 style={{fontSize:"1rem",fontWeight:700,color:"#0f2e47",marginBottom:4}}>Carga rapida de stock</h2>
+    <p style={{fontSize:"0.7rem",color:"#9ca3af",marginBottom:14}}>Para meter prendas que ya teneis en el taller. Sin WhatsApp salvo las que estan listas.</p>
+    {count > 0 && <div style={{background:"#d1fae5",borderRadius:8,padding:"6px 12px",marginBottom:12,fontSize:"0.75rem",color:"#059669",fontWeight:600}}>{count} prenda{count>1?"s":""} cargada{count>1?"s":""}</div>}
+
+    <label style={S.label}>Nombre</label>
+    <input value={name} onChange={e=>setName(e.target.value)} placeholder="Maria Lopez" style={S.input}/>
+
+    <label style={S.label}>Telefono</label>
+    <input type="tel" value={phone} onChange={e=>setPhone(e.target.value)} placeholder="612 345 678" style={{...S.input,fontSize:"1rem"}}/>
+
+    <label style={S.label}>Servicio</label>
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+      {config.services.map(s=><button key={s.id} onClick={()=>{setSvcId(s.id);if(s.price>0)setPrice(s.price.toString())}} style={{...S.svcBtn,...(svcId===s.id?S.svcBtnA:{}),padding:"6px 8px"}}>
+        <span style={{fontWeight:600,fontSize:"0.72rem"}}>{s.icon} {s.name}</span>
+      </button>)}
+    </div>
+
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:8}}>
+      <div><label style={{...S.label,marginTop:0}}>Precio</label><input type="number" value={price} onChange={e=>setPrice(e.target.value)} placeholder={svc.price.toString()} style={S.input}/></div>
+      <div><label style={{...S.label,marginTop:0}}>Pagado</label><input type="number" value={paid} onChange={e=>setPaid(e.target.value)} placeholder="0" style={S.input}/></div>
+    </div>
+
+    <label style={S.label}>Estado actual de la prenda</label>
+    <div style={{display:"flex",gap:6}}>
+      {[{id:"confirmado",l:"En cola",c:"#2563eb",bg:"#dbeafe"},{id:"proceso",l:"Cosiendo",c:"#d97706",bg:"#fef3c7"},{id:"listo",l:"Lista",c:"#059669",bg:"#d1fae5"}].map(s=>(
+        <button key={s.id} onClick={()=>setStatus(s.id)} style={{...S.fBtn,flex:1,...(status===s.id?{background:s.bg,color:s.c,borderColor:s.c}:{})}}>{s.l}</button>
+      ))}
+    </div>
+
+    <div style={{display:"flex",gap:8,marginTop:16}}>
+      <button onClick={()=>save(false)} disabled={!name.trim()||!phone.trim()} style={{...S.btnP,flex:1,padding:"14px 16px",opacity:(!name.trim()||!phone.trim())?0.5:1}}>Guardar</button>
+      {status==="listo"&&<button onClick={()=>save(true)} disabled={!name.trim()||!phone.trim()} style={{...S.btnP,flex:1,padding:"14px 16px",background:"#059669",opacity:(!name.trim()||!phone.trim())?0.5:1}}>Guardar + Avisar</button>}
+    </div>
+
+    <p style={{fontSize:"0.65rem",color:"#9ca3af",marginTop:8,textAlign:"center"}}>Al guardar, el nombre y telefono se mantienen por si el mismo cliente tiene mas prendas</p>
+  </div>;
 }
 
 // ═══════════════════════════════════════════
