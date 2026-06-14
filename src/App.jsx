@@ -367,8 +367,7 @@ export default function App() {
         {[{id:"dash",l:"🏠"},{id:"orders",l:"📋"},{id:"new",l:"➕"},{id:"stock",l:"📦"},{id:"calendar",l:"📅"},{id:"settings",l:"⚙️"}].map(t=>(
           <button key={t.id} onClick={()=>{setView(t.id);setEditing(null);setSearch("")}} style={{...S.tab,...(view===t.id?S.tabA:{})}}>{t.l}</button>
         ))}
-        <button onClick={exportCSV} style={S.tab}>📤</button>
-      </div>
+           </div>
       <div style={S.content}>
 
         {/* DASHBOARD */}
