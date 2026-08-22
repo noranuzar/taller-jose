@@ -412,7 +412,7 @@ export default function App() {
         }}/>}
 
         {/* SETTINGS */}
-        {view==="settings"&&<Settings config={config} onSave={c=>{setConfig(c);notify("Guardado")}}/>}
+              {view==="settings"&&<Settings config={config} onSave={c=>{setConfig(c);notify("Guardado")}} onCargaInicial={()=>setView("stock")}/>}
       </div>
     </div>
   );
@@ -900,7 +900,7 @@ function CalendarView({orders,config,onBlockDay}){
 // ═══════════════════════════════════════════
 // SETTINGS
 // ═══════════════════════════════════════════
-function Settings({config,onSave}){
+  function Settings({config,onSave,onCargaInicial}){
   const [workers,setWorkers]=useState(config.workers);
   const [services,setServices]=useState(config.services);
   const [signalPct,setSignalPct]=useState(config.signalPct);
@@ -941,6 +941,11 @@ function Settings({config,onSave}){
     {tab==="other"&&<div style={S.card}>
       <h2 style={{fontSize:"1rem",fontWeight:700,color:"#0f2e47",marginBottom:14}}>Otros</h2>
       <label style={S.label}>Senal (%)</label><input type="number" value={signalPct} onChange={e=>setSignalPct(parseInt(e.target.value)||0)} style={{...S.input,width:100}}/>
+            <div style={{marginTop:20,paddingTop:16,borderTop:"1px solid #e5e7eb"}}>
+        <div style={{fontSize:"0.8rem",fontWeight:700,color:"#374151",marginBottom:4}}>Cargar prendas que ya tengo</div>
+        <p style={{fontSize:"0.72rem",color:"#9ca3af",marginBottom:10,lineHeight:1.4}}>Solo al empezar: mete aqui las prendas que ya estaban en el taller antes de usar la app. En el dia a dia usa siempre el boton ➕.</p>
+        <button onClick={onCargaInicial} style={{...S.btnSec,width:"100%",padding:"12px 16px"}}>📦 Carga inicial de prendas</button>
+      </div>
     </div>}
     <button onClick={()=>onSave({...config,workers,services,signalPct})} style={{...S.btnP,width:"100%",marginTop:12,padding:"14px 16px"}}>Guardar</button>
   </div>;
