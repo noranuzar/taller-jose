@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { loadOrders, saveOrder, saveAllOrders, deleteOrderDb, loadConfig, saveConfig, loadTicket, saveTicket } from "./storage";
+import { loadOrders, saveOrder, saveAllOrders, deleteOrderDb, loadConfig, saveConfig, loadTicket, saveTicket } from "./storage"; 
+import Botes from "./Botes";
 
 // ═══════════════════════════════════════════
 // CONFIG DEFAULTS
