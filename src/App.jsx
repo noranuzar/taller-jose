@@ -364,7 +364,7 @@ export default function App() {
         <button onClick={()=>{setMode(null);setPin("");setView("dash")}} style={S.logoutBtn}>Salir</button>
       </div>
       <div style={S.tabs}>
-        {[{id:"dash",l:"🏠"},{id:"orders",l:"📋"},{id:"new",l:"➕"},{id:"stock",l:"📦"},{id:"calendar",l:"📅"},{id:"settings",l:"⚙️"}].map(t=>(
+        {[{id:"dash",l:"🏠"},{id:"orders",l:"📋"},{id:"new",l:"➕"},{id:"calendar",l:"📅"},{id:"settings",l:"⚙️"}].map(t=>(
           <button key={t.id} onClick={()=>{setView(t.id);setEditing(null);setSearch("")}} style={{...S.tab,...(view===t.id?S.tabA:{})}}>{t.l}</button>
         ))}
            </div>
