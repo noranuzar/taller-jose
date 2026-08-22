@@ -940,7 +940,12 @@ function CalendarView({orders,config,onBlockDay}){
     </div>}
     {tab==="other"&&<div style={S.card}>
       <h2 style={{fontSize:"1rem",fontWeight:700,color:"#0f2e47",marginBottom:14}}>Otros</h2>
-      <label style={S.label}>Senal (%)</label><input type="number" value={signalPct} onChange={e=>setSignalPct(parseInt(e.target.value)||0)} style={{...S.input,width:100}}/>
+            <div style={{fontSize:"0.8rem",fontWeight:700,color:"#374151",marginBottom:4}}>Senal por defecto</div>
+      <p style={{fontSize:"0.72rem",color:"#9ca3af",marginBottom:10,lineHeight:1.4}}>Que parte del precio paga el cliente por adelantado al dejar la prenda. El resto lo paga al recoger.</p>
+      <div style={{display:"flex",alignItems:"center",gap:8}}>
+        <input type="number" value={signalPct} onChange={e=>setSignalPct(parseInt(e.target.value)||0)} style={{...S.input,width:90}}/>
+        <span style={{fontSize:"0.9rem",color:"#6b7280",fontWeight:600}}>% del precio</span>
+      </div>
             <div style={{marginTop:20,paddingTop:16,borderTop:"1px solid #e5e7eb"}}>
         <div style={{fontSize:"0.8rem",fontWeight:700,color:"#374151",marginBottom:4}}>Cargar prendas que ya tengo</div>
         <p style={{fontSize:"0.72rem",color:"#9ca3af",marginBottom:10,lineHeight:1.4}}>Solo al empezar: mete aqui las prendas que ya estaban en el taller antes de usar la app. En el dia a dia usa siempre el boton ➕.</p>
