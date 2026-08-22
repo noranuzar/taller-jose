@@ -129,7 +129,7 @@ function findSlot(mins, orders, config) {
 const waOpen = (phone, msg) => window.open("https://wa.me/" + phone + "?text=" + encodeURIComponent(msg), "_blank");
 function waBatchRegister(items, name, totalPrice, signalAmount, cfg) {
   const pending = totalPrice - signalAmount;
-  let msg = "Hola " + name + ", tus prendas estan registradas en el Taller de Costura Express.\n\n";
+  let msg = "Hola " + name + ", tus prendas estan registradas en el Taller de Costura MILE.\n\n";
   items.forEach(o => { msg += tkt(o.ticketNum) + " " + o.serviceName + " - entrega " + fmtD(o.deliveryDate) + "\n"; });
   msg += "\nTotal: " + totalPrice + "E\n";
   if (signalAmount > 0) msg += "Pagado: " + signalAmount + "E\n";
@@ -320,7 +320,7 @@ export default function App() {
   if (!mode) return (
     <div style={S.entryBg}><div style={S.entryCard}>
       <div style={{fontSize:48,marginBottom:4}}>✂️</div>
-      <h1 style={S.title}>Taller de Costura Express</h1>
+       <h1 style={S.title}>Taller de Costura MILE</h1>
       <p style={S.sub}>Gestion de pedidos</p>
       <div style={{textAlign:"left",marginBottom:16}}>
         <div style={S.blockLabel}>Administracion</div>
@@ -359,7 +359,7 @@ export default function App() {
       {toast&&<div style={S.toast}>{toast}</div>}
       <div style={S.topBar}>
         <div style={{flex:1}}>
-          <div style={{fontWeight:700,fontSize:"0.95rem"}}>Taller de Costura Express</div>
+          <div style={{fontWeight:700,fontSize:"0.95rem"}}>Taller de Costura MILE</div>
           <div style={{fontSize:"0.65rem",opacity:0.6}}>{inv.total} prendas - {todayCap.free}min libres hoy</div>
         </div>
         <button onClick={()=>{setMode(null);setPin("");setView("dash")}} style={S.logoutBtn}>Salir</button>
@@ -399,7 +399,7 @@ export default function App() {
           notify(tkt(tn)+" cargado");
           if(sendWA&&o.status==="listo"){
             const pending=o.price-(o.paid||0);
-            const msg="Hola "+o.name+", te escribimos del Taller de Costura Express.\nTu prenda ("+svc.name+") esta lista para recoger."+(pending>0?"\nPendiente: "+pending+"E":"")+"\n"+config.address+"\nL-V 10-14h y 17-20:30h, Sab 10-14h";
+            const msg="Hola "+o.name+", te escribimos del Taller de Costura MILE.\nTu prenda ("+svc.name+") esta lista para recoger."+(pending>0?"\nPendiente: "+pending+"E":"")+"\n"+config.address+"\nL-V 10-14h y 17-20:30h, Sab 10-14h";
             waOpen(o.phone,msg);
           }
         }}/>}
